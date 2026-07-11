@@ -82,51 +82,52 @@ def extract_invoice_no(text):
 def extract_vendor(text):
     patterns = [
         r"Vendor\s*[:\-]\s*(.+)",
-        r"Supplier\s*[:\-]\s*(.+)",
-        r"Sold\s*By\s*[:\-]\s*(.+)",
-        r"Company\s*[:\-]\s*(.+)",
         r"Vendor Name\s*[:\-]\s*(.+)",
+        r"Supplier\s*[:\-]\s*(.+)",
         r"Supplier Name\s*[:\-]\s*(.+)",
+        r"Company\s*[:\-]\s*(.+)",
+        r"Sold\s*By\s*[:\-]\s*(.+)",
         r"Billed By\s*[:\-]?\s*\n\s*(.+)",
         r"Bill From\s*[:\-]?\s*\n\s*(.+)",
-        r"From\s*[:\-]\s*(.+)"
     ]
 
     vendor = extract_first(patterns, text)
-
     if vendor:
         return vendor.split("\n")[0].strip()
 
-    # Fallback: first meaningful line before invoice/date
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
-
-    ignore = [
-        "invoice",
-        "invoice no",
-        "invoice number",
-        "invoice #",
-        "ref",
-        "reference",
-        "date",
-        "subtotal",
-        "total",
-        "gst",
-        "cgst",
-        "sgst",
-        "igst",
-        "tax",
-        "amount",
-        "bill"
-    ]
+    # Fallback: first meaningful line
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
 
     for line in lines:
-        lower = line.lower()
+        l = line.lower()
 
-        if any(word in lower for word in ignore):
+        # Skip invoice-related lines
+        if any(keyword in l for keyword in [
+            "invoice",
+            "number",
+            "invoice no",
+            "invoice number",
+            "invoice #",
+            "ref",
+            "reference",
+            "date",
+            "subtotal",
+            "total",
+            "gst",
+            "cgst",
+            "sgst",
+            "igst",
+            "tax",
+            "amount",
+            "currency",
+            "bill no",
+            "document",
+            "doc no"
+        ]):
             continue
 
-        # Skip lines that are only numbers
-        if re.fullmatch(r"[\d\s.,/-]+", line):
+        # Skip lines containing numbers
+        if re.search(r"\d", line):
             continue
 
         return line
