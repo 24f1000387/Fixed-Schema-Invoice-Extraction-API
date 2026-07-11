@@ -6,7 +6,6 @@ import re
 
 app = FastAPI()
 
-# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,193 +19,193 @@ class InvoiceInput(BaseModel):
     invoice_text: str
 
 
-# ----------------------------
-# Utility Functions
-# ----------------------------
+# ---------------- Utilities ---------------- #
 
-def extract_first(patterns, text):
-    """
-    Try multiple regex patterns and return first match.
-    """
-    for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
-        if match:
-            return match.group(1).strip()
-    return None
-
-
-def parse_amount(value):
-    if value is None:
+def parse_amount(text):
+    if text is None:
         return None
 
-    value = value.replace(",", "")
-    value = re.sub(r"(Rs\.?|INR|₹)", "", value, flags=re.IGNORECASE).strip()
+    m = re.search(r"([\d,]+(?:\.\d+)?)", text)
+    if not m:
+        return None
 
     try:
-        return float(value)
+        return float(m.group(1).replace(",", ""))
     except:
         return None
 
 
-def parse_date(value):
-    if value is None:
+def parse_date(text):
+    if not text:
         return None
 
     try:
-        return parse(value, dayfirst=True).strftime("%Y-%m-%d")
+        return parse(text, dayfirst=True).strftime("%Y-%m-%d")
     except:
         return None
 
 
-# ----------------------------
-# Extraction Functions
-# ----------------------------
+# ---------------- Extraction ---------------- #
 
-def extract_invoice_no(text):
-    patterns = [
-        r"Invoice\s*No\.?\s*[:#-]?\s*([A-Za-z0-9\-\/]+)",
-        r"Invoice\s*Number\s*[:#-]?\s*([A-Za-z0-9\-\/]+)",
-        r"Invoice\s*#\s*([A-Za-z0-9\-\/]+)",
-        r"Invoice\s*ID\s*[:#-]?\s*([A-Za-z0-9\-\/]+)",
-        r"Invoice\s*Ref(?:erence)?\s*[:#-]?\s*([A-Za-z0-9\-\/]+)",
-        r"Reference\s*(?:No)?\s*[:#-]?\s*([A-Za-z0-9\-\/]+)",
-        r"Ref\s*[:#-]?\s*([A-Za-z0-9\-\/]+)",
-        r"Bill\s*No\.?\s*[:#-]?\s*([A-Za-z0-9\-\/]+)",
-        r"Document\s*No\.?\s*[:#-]?\s*([A-Za-z0-9\-\/]+)",
-        r"Doc\s*No\.?\s*[:#-]?\s*([A-Za-z0-9\-\/]+)"
-    ]
-
-    return extract_first(patterns, text)
-
-
-def extract_vendor(text):
-    patterns = [
-        r"Vendor\s*[:\-]\s*(.+)",
-        r"Vendor Name\s*[:\-]\s*(.+)",
-        r"Supplier\s*[:\-]\s*(.+)",
-        r"Supplier Name\s*[:\-]\s*(.+)",
-        r"Company\s*[:\-]\s*(.+)",
-        r"Sold\s*By\s*[:\-]\s*(.+)",
-        r"From\s*[:\-]\s*(.+)",
-        r"Billed By\s*[:\-]\s*(.+)",
-        r"Bill From\s*[:\-]\s*(.+)",
-        r"Issued By\s*[:\-]\s*(.+)",
-        r"Seller\s*[:\-]\s*(.+)"
-    ]
-
-    vendor = extract_first(patterns, text)
-
-    if vendor:
-        vendor = vendor.split("\n")[0].strip()
-        vendor = re.sub(
-            r"^(Vendor|Vendor Name|Supplier|Supplier Name|Company|Sold By|From|Bill From|Billed By|Issued By|Seller)\s*[:\-]\s*",
-            "",
-            vendor,
-            flags=re.IGNORECASE,
-        )
-        return vendor.strip()
-
-    # Fallback
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
-
-    skip_words = [
-        "invoice", "number", "date", "subtotal", "total",
-        "gst", "cgst", "sgst", "igst", "tax",
-        "amount", "currency", "ref", "reference"
-    ]
-
-    for line in lines:
-        lower = line.lower()
-
-        if any(word in lower for word in skip_words):
-            continue
-
-        if re.search(r"\d", line):
-            continue
-
-        # Remove prefixes if present
-        line = re.sub(
-            r"^(Vendor|Vendor Name|Supplier|Supplier Name|Company|Sold By|From|Bill From|Billed By|Issued By|Seller)\s*[:\-]\s*",
-            "",
-            line,
-            flags=re.IGNORECASE,
-        )
-
-        return line.strip()
-
-    return None
-
-def extract_date(text):
-    patterns = [
-        r"Date\s*[:\-]\s*(.+)",
-        r"Invoice\s*Date\s*[:\-]\s*(.+)",
-        r"Dated\s*[:\-]\s*(.+)"
-    ]
-
-    date = extract_first(patterns, text)
-
-    if date:
-        date = date.split("\n")[0]
-
-    return parse_date(date)
-
-
-def extract_subtotal(text):
-    patterns = [
-        r"Subtotal\s*[:\-]?\s*(?:Rs\.?|₹|INR)?\s*([\d,]+\.\d{2})",
-        r"Sub\s*Total\s*[:\-]?\s*(?:Rs\.?|₹|INR)?\s*([\d,]+\.\d{2})",
-        r"Amount\s*Before\s*Tax\s*[:\-]?\s*(?:Rs\.?|₹|INR)?\s*([\d,]+\.\d{2})",
-        r"Net\s*Amount\s*[:\-]?\s*(?:Rs\.?|₹|INR)?\s*([\d,]+\.\d{2})"
-    ]
-
-    return parse_amount(extract_first(patterns, text))
-
-
-def extract_tax(text):
-    patterns = [
-        r"GST.*?[:\-]?\s*(?:Rs\.?|₹|INR)?\s*([\d,]+\.\d{2})",
-        r"CGST.*?[:\-]?\s*(?:Rs\.?|₹|INR)?\s*([\d,]+\.\d{2})",
-        r"SGST.*?[:\-]?\s*(?:Rs\.?|₹|INR)?\s*([\d,]+\.\d{2})",
-        r"IGST.*?[:\-]?\s*(?:Rs\.?|₹|INR)?\s*([\d,]+\.\d{2})",
-        r"Tax.*?[:\-]?\s*(?:Rs\.?|₹|INR)?\s*([\d,]+\.\d{2})",
-        r"VAT.*?[:\-]?\s*(?:Rs\.?|₹|INR)?\s*([\d,]+\.\d{2})"
-    ]
-
-    return parse_amount(extract_first(patterns, text))
-
-
-def extract_currency(text):
-    if "USD" in text.upper():
-        return "USD"
-
-    if "EUR" in text.upper():
-        return "EUR"
-
-    if "GBP" in text.upper():
-        return "GBP"
-
-    if "INR" in text.upper() or "RS." in text.upper() or "₹" in text:
-        return "INR"
-
-    return "INR"
-
-
-# ----------------------------
-# API Endpoint
-# ----------------------------
-
-@app.post("/extract")
-def extract_invoice(data: InvoiceInput):
-
-    text = data.invoice_text
+def extract_invoice(text):
 
     result = {
-        "invoice_no": extract_invoice_no(text),
-        "date": extract_date(text),
-        "vendor": extract_vendor(text),
-        "amount": extract_subtotal(text),
-        "tax": extract_tax(text),
-        "currency": extract_currency(text),
+        "invoice_no": None,
+        "date": None,
+        "vendor": None,
+        "amount": None,
+        "tax": None,
+        "currency": None,
     }
 
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+
+    total = None
+
+    # ---------- Pass 1 ----------
+    for i, line in enumerate(lines):
+
+        low = line.lower()
+
+        # Currency
+        if "currency" in low:
+            if "INR" in line.upper():
+                result["currency"] = "INR"
+            elif "USD" in line.upper():
+                result["currency"] = "USD"
+            elif "EUR" in line.upper():
+                result["currency"] = "EUR"
+
+        if result["currency"] is None:
+            if "₹" in line or "RS." in line.upper():
+                result["currency"] = "INR"
+
+        # Invoice Number
+        patterns = [
+            r"invoice\s*no\.?\s*[:#-]?\s*(.+)",
+            r"invoice\s*number\s*[:#-]?\s*(.+)",
+            r"invoice\s*id\s*[:#-]?\s*(.+)",
+            r"ref(?:erence)?\s*[:#-]?\s*(.+)",
+            r"bill\s*no\.?\s*[:#-]?\s*(.+)",
+            r"document\s*no\.?\s*[:#-]?\s*(.+)",
+        ]
+
+        if result["invoice_no"] is None:
+            for p in patterns:
+                m = re.match(p, line, re.I)
+                if m:
+                    result["invoice_no"] = m.group(1).strip()
+                    break
+
+        # Vendor labels
+        vendor_patterns = [
+            r"vendor\s*[:\-]\s*(.+)",
+            r"supplier\s*[:\-]\s*(.+)",
+            r"company\s*[:\-]\s*(.+)",
+            r"from\s*[:\-]\s*(.+)",
+            r"issued by\s*[:\-]\s*(.+)",
+            r"seller\s*[:\-]\s*(.+)",
+            r"bill from\s*[:\-]\s*(.+)",
+            r"billed by\s*[:\-]\s*(.+)",
+        ]
+
+        if result["vendor"] is None:
+            for p in vendor_patterns:
+                m = re.match(p, line, re.I)
+                if m:
+                    result["vendor"] = m.group(1).strip()
+                    break
+
+        # Date
+        if result["date"] is None:
+            m = re.match(r"(date|issued|invoice date)\s*[:\-]\s*(.+)", line, re.I)
+            if m:
+                result["date"] = parse_date(m.group(2))
+
+        # Amount
+        if result["amount"] is None:
+
+            if any(x in low for x in [
+                "subtotal",
+                "sub total",
+                "taxable value",
+                "net amount",
+                "basic amount",
+                "amount before tax",
+                "amount excluding tax"
+            ]):
+                result["amount"] = parse_amount(line)
+
+        # Tax
+        if result["tax"] is None:
+
+            if any(x in low for x in [
+                "gst",
+                "cgst",
+                "sgst",
+                "igst",
+                "vat",
+                "tax"
+            ]):
+                result["tax"] = parse_amount(line)
+
+        # Total
+        if any(x in low for x in [
+            "grand total",
+            "total due",
+            "amount payable",
+            "total"
+        ]):
+            total = parse_amount(line)
+
+    # ---------- Vendor Fallback ----------
+
+    if result["vendor"] is None:
+
+        ignore = [
+            "invoice",
+            "ref",
+            "reference",
+            "date",
+            "issued",
+            "subtotal",
+            "total",
+            "gst",
+            "cgst",
+            "sgst",
+            "igst",
+            "tax",
+            "currency",
+            "bill to",
+            "client",
+        ]
+
+        for line in lines:
+
+            low = line.lower()
+
+            if any(word in low for word in ignore):
+                continue
+
+            if re.search(r"\d", line):
+                continue
+
+            result["vendor"] = line.split("—")[0].strip()
+            break
+
+    # ---------- Amount Fallback ----------
+
+    if result["amount"] is None:
+
+        if total is not None and result["tax"] is not None:
+            result["amount"] = round(total - result["tax"], 2)
+
+    if result["currency"] is None:
+        result["currency"] = "INR"
+
     return result
+
+
+@app.post("/extract")
+def extract(data: InvoiceInput):
+    return extract_invoice(data.invoice_text)
