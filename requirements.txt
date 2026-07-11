@@ -1,3 +1,5 @@
 fastapi
 uvicorn
+groq
 python-dateutil
+python-dotenv
