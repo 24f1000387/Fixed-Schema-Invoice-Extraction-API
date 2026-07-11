@@ -84,15 +84,54 @@ def extract_vendor(text):
         r"Vendor\s*[:\-]\s*(.+)",
         r"Supplier\s*[:\-]\s*(.+)",
         r"Sold\s*By\s*[:\-]\s*(.+)",
-        r"Company\s*[:\-]\s*(.+)"
+        r"Company\s*[:\-]\s*(.+)",
+        r"Vendor Name\s*[:\-]\s*(.+)",
+        r"Supplier Name\s*[:\-]\s*(.+)",
+        r"Billed By\s*[:\-]?\s*\n\s*(.+)",
+        r"Bill From\s*[:\-]?\s*\n\s*(.+)",
+        r"From\s*[:\-]\s*(.+)"
     ]
 
     vendor = extract_first(patterns, text)
 
     if vendor:
-        vendor = vendor.split("\n")[0].strip()
+        return vendor.split("\n")[0].strip()
 
-    return vendor
+    # Fallback: first meaningful line before invoice/date
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+
+    ignore = [
+        "invoice",
+        "invoice no",
+        "invoice number",
+        "invoice #",
+        "ref",
+        "reference",
+        "date",
+        "subtotal",
+        "total",
+        "gst",
+        "cgst",
+        "sgst",
+        "igst",
+        "tax",
+        "amount",
+        "bill"
+    ]
+
+    for line in lines:
+        lower = line.lower()
+
+        if any(word in lower for word in ignore):
+            continue
+
+        # Skip lines that are only numbers
+        if re.fullmatch(r"[\d\s.,/-]+", line):
+            continue
+
+        return line
+
+    return None
 
 
 def extract_date(text):
