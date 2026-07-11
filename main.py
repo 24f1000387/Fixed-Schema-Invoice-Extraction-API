@@ -87,53 +87,54 @@ def extract_vendor(text):
         r"Supplier Name\s*[:\-]\s*(.+)",
         r"Company\s*[:\-]\s*(.+)",
         r"Sold\s*By\s*[:\-]\s*(.+)",
-        r"Billed By\s*[:\-]?\s*\n\s*(.+)",
-        r"Bill From\s*[:\-]?\s*\n\s*(.+)",
+        r"From\s*[:\-]\s*(.+)",
+        r"Billed By\s*[:\-]\s*(.+)",
+        r"Bill From\s*[:\-]\s*(.+)",
+        r"Issued By\s*[:\-]\s*(.+)",
+        r"Seller\s*[:\-]\s*(.+)"
     ]
 
     vendor = extract_first(patterns, text)
-    if vendor:
-        return vendor.split("\n")[0].strip()
 
-    # Fallback: first meaningful line
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if vendor:
+        vendor = vendor.split("\n")[0].strip()
+        vendor = re.sub(
+            r"^(Vendor|Vendor Name|Supplier|Supplier Name|Company|Sold By|From|Bill From|Billed By|Issued By|Seller)\s*[:\-]\s*",
+            "",
+            vendor,
+            flags=re.IGNORECASE,
+        )
+        return vendor.strip()
+
+    # Fallback
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+
+    skip_words = [
+        "invoice", "number", "date", "subtotal", "total",
+        "gst", "cgst", "sgst", "igst", "tax",
+        "amount", "currency", "ref", "reference"
+    ]
 
     for line in lines:
-        l = line.lower()
+        lower = line.lower()
 
-        # Skip invoice-related lines
-        if any(keyword in l for keyword in [
-            "invoice",
-            "number",
-            "invoice no",
-            "invoice number",
-            "invoice #",
-            "ref",
-            "reference",
-            "date",
-            "subtotal",
-            "total",
-            "gst",
-            "cgst",
-            "sgst",
-            "igst",
-            "tax",
-            "amount",
-            "currency",
-            "bill no",
-            "document",
-            "doc no"
-        ]):
+        if any(word in lower for word in skip_words):
             continue
 
-        # Skip lines containing numbers
         if re.search(r"\d", line):
             continue
 
-        return line
+        # Remove prefixes if present
+        line = re.sub(
+            r"^(Vendor|Vendor Name|Supplier|Supplier Name|Company|Sold By|From|Bill From|Billed By|Issued By|Seller)\s*[:\-]\s*",
+            "",
+            line,
+            flags=re.IGNORECASE,
+        )
+
+        return line.strip()
 
     return None
-
 
 def extract_date(text):
     patterns = [
